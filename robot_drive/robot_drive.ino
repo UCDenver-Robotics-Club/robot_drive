@@ -1,17 +1,22 @@
-// includes
-#include <PID_v1.h>
-#include <PRIZM.h>
-#include <i2cdevice.h>
+#include <vectormath.h> // libs for vector math
+#include <PID_v1.h> // pid control 
+#include <PRIZM.h> // for motor and servo drive 
+#include <i2cdevice.h> // lib for devices 
+// imu devices 
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
-#include <ArduinoJson.h>
+//#include <ArduinoJson.h> 
 
 
-// program for test driving
+// objects for running the system
 PRIZM prizm; // prizm object 
 Adafruit_BNO055 bno = Adafruit_BNO055(); // IMU object
 Ledblink blinker(8); // led blinker for status 
+NavVector pos(0,0); // inital position
+// powerlevles for the left and right motor
+int motor1,motor2;
+// set points and error for driving in a strait line
 
 void setup()
 {
@@ -28,14 +33,22 @@ void setup()
 
   // setup the motors 
   prizm.setMotorInvert(1,1); // invert motor #1 
-  prizm.setServoPosition(2,0); // turn on the convair belt
+ // prizm.setServoPosition(2,0); // turn on the convair belt
+
+ // set the initial values for the motors
+ motor1 = 20;
+ motor2 = 20;
+ prizm.setMotorPowers(motor1,motor2);
   
 }
 
 void loop()
 {
   Serial.println(getRotation());
-  
+  blinker.on();
+  delay(200);
+  blinker.off();
+  delay(200);
 }
 
 float getRotation()
