@@ -7,7 +7,7 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 // constents 
-const int startingSpeed = 25;
+const int startingSpeed = 20;
 
 
 // objects for running the system
@@ -23,10 +23,10 @@ NavVector motorPower(0,0);
 // powerlevles for the left and right motor
 int motor1,motor2;
 // set points and error for driving in a line
-double setPoint = 0;
-double error=0;
-double correction=0;
-PID directionCorrection(&error,&correction,&setPoint,1,0,0,DIRECT);
+double setPoint; // zero, or with in reasoanble error 
+double error;
+double correction;
+PID directionCorrection(&error,&correction,&setPoint,2,1,1,DIRECT);
 
 void setup()
 {
@@ -50,6 +50,9 @@ void setup()
   directionCorrection.SetMode(AUTOMATIC); // turn the pid control on
 
   blinker.off(); // make sure that the status light is off
+
+  // make the set poing for the angle error zero
+  setPoint = 0;
 }
 
 void loop()
@@ -62,18 +65,48 @@ void loop()
 //  delay(100);
 
   float theta = getRotation();
-  if(theta > 5)
+//  if(theta > 5)
+//  {
+//    blinker.on();
+//  }
+//  else
+//  {
+//    blinker.off();
+//  }
+  //Serial.print("theta: ");
+  //Serial.print(theta); // theta is the value from the IMU
+
+  
+  //error = theta; // for testing error is just going to be theta 
+  // compute error 
+  if(theta > 180)
   {
-    blinker.on();
+    error = (360 - theta);
   }
   else
   {
-    blinker.off();
+    error = theta;
   }
-  Serial.println(theta);
 
+  Serial.print(" error: ");
+  Serial.print(error);
+
+  if(error > 0.10) // threshold used to be 4
+  {
+    directionCorrection.Compute();
+    Serial.print(" correction ");
+    Serial.println(correction);
+    NavVector correctionVector(correction,0.1,false); // used to be 7, but that was way too big
+    motorPower = motorPower.sub(correctionVector);
+  }
+  
+  // print out the motor power angle
+  //Serial.println("motor power angle");
+  //Serial.println(motorPower.getAngle());
+ 
   // update the speed of the motors 
-  prizm.setMotorPowers(motorPower.getX(),motorPower.getY()); // set the motor speeds based on a vector 
+  prizm.setMotorPowers(motorPower.getX(),motorPower.getY()); // set the motor speeds based on a vector
+  delay(50); 
 }
 
 float getRotation()
