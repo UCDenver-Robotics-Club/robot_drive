@@ -7,8 +7,8 @@
 #include <Adafruit_BNO055.h>
 #include <utility/imumaths.h>
 // constents 
-const int startingSpeed = 20;
-
+const int STARTINTSPEED = 40; // worked pretty well @ 40
+const float kP = 8; // this is found by trial and error 
 
 // objects for running the system
 PRIZM prizm; // prizm object 
@@ -17,19 +17,12 @@ Ledblink blinker(8); // led blinker for status
 // vectors for navigation
 NavVector pos(0,0); // inital position
 NavVector motorPower(0,0);
-// position for the robot to drive to
 
 
-// powerlevles for the left and right motor
-int motor1,motor2;
-// set points and error for driving in a line
-double setPoint; // zero, or with in reasoanble error 
-double error;
-double correction;
-PID directionCorrection(&error,&correction,&setPoint,2,1,1,DIRECT);
 
 void setup()
 {
+  pinMode(13,OUTPUT);
   Serial.begin(9600); // start of the serial port 
   prizm.PrizmBegin(); // start up the prizm board and wait for go 
 
@@ -45,69 +38,109 @@ void setup()
   prizm.setMotorInvert(1,1); // invert motor #1 
  // prizm.setServoPosition(2,0); // turn on the convair belt
 
-  // set the initial values for the motors
-  motorPower.setValues(startingSpeed,startingSpeed);
-  directionCorrection.SetMode(AUTOMATIC); // turn the pid control on
+  blinker.on();
+  delay(250);
+  blinker.off();
+  delay(1000); // give enough time to run infrount of the robot
+  blinker.on(); // turn led on to say we've started testing
+  // testing stuff ...
+  driveDistance(7,STARTINTSPEED,true); // drive 7 feet
 
-  blinker.off(); // make sure that the status light is off
-
-  // make the set poing for the angle error zero
-  setPoint = 0;
+  blinker.off(); // turn led off to say we're done testing
 }
 
 void loop()
 {
-//  Serial.println(getRotation());
-//  blinker.on();
-//  delay(100);
-//  Serial.println(getRotation());
-//  blinker.off();
-//  delay(100);
-
-  float theta = getRotation();
-//  if(theta > 5)
-//  {
-//    blinker.on();
-//  }
-//  else
-//  {
-//    blinker.off();
-//  }
-  //Serial.print("theta: ");
-  //Serial.print(theta); // theta is the value from the IMU
-
-  
-  //error = theta; // for testing error is just going to be theta 
-  // compute error 
-  if(theta > 180)
-  {
-    error = (360 - theta);
-  }
-  else
-  {
-    error = theta;
-  }
-
-  Serial.print(" error: ");
-  Serial.print(error);
-
-  if(error > 0.10) // threshold used to be 4
-  {
-    directionCorrection.Compute();
-    Serial.print(" correction ");
-    Serial.println(correction);
-    NavVector correctionVector(correction,0.1,false); // used to be 7, but that was way too big
-    motorPower = motorPower.sub(correctionVector);
-  }
-  
-  // print out the motor power angle
-  //Serial.println("motor power angle");
-  //Serial.println(motorPower.getAngle());
- 
-  // update the speed of the motors 
-  prizm.setMotorPowers(motorPower.getX(),motorPower.getY()); // set the motor speeds based on a vector
-  delay(50); 
+  //blinker.on();
+  //delay(1000);
+  //blinker.off();
+  //delay(1000);  
 }
+
+void drive(double correction,double rspeed)
+{
+  // correction for left motor
+  double tempLeft = rspeed;
+  // apply the correction and then normalise it.
+  tempLeft += correction;
+  tempLeft = normalise(tempLeft);
+  //prizm.setMotorPower(2,tempLeft); // set the speed of the left motor, I think
+
+  // correction for right motor
+  double tempRight = correction;
+  tempRight += rspeed;// * -1.0; 
+  tempRight = normalise(tempRight); // normalise with in bounds
+  //prizm.setMotorPower(1,tempRight); // set the motor speed
+  
+  prizm.setMotorPowers(tempLeft,tempRight);
+  
+  // send the motor values back to the PC
+  Serial.print(" right motor: ");
+  Serial.print(tempRight);
+  Serial.print(" left motor: ");
+  Serial.print(tempLeft);
+  Serial.print(" right encoder: ");
+  Serial.print(prizm.readEncoderCount(2));
+  Serial.print(" left encoder: ");
+  Serial.print(prizm.readEncoderCount(1));
+  Serial.print(" current angle: ");
+  Serial.print(getRotation());
+  Serial.print(" correcting value: ");
+  Serial.print(correction);
+  Serial.println();
+}
+
+// drive a fixed distance, use feet if nessary
+void driveDistance(float distance,float rspeed,bool usefeet)
+{
+  // ticks to travel and the ticks that we've already travled
+  float ticksToTravel; 
+  int ticksPerCm = 40; // 40 ticks per centimeter
+
+  //prizm.setMotorPower(2,-20);
+
+  if(usefeet)
+  {
+    // if the input in feet then convert to centimeters
+    distance = distance * 30.08; // apply a conversion factor from feet to centimeters 
+    Serial.println(distance);
+  }
+  // apply a conversion factor to convert from centimeters to ticks 
+  ticksToTravel = distance * 40;
+
+  // reset the encoders and the gyro scope 
+  prizm.resetEncoders();
+  if(!bno.begin())
+  {
+    Serial.println("something went wrong with the IMU while reseting in the drive distance function");
+  }
+
+  Serial.println(ticksToTravel);
+
+  while(abs(prizm.readEncoderCount(1)) < ticksToTravel && abs(prizm.readEncoderCount(2)) < ticksToTravel)
+  {
+    // use proportinal feedback from the IMU to make sure that we're driving in a strait line
+    float angle = getRotation();
+    
+    drive(angle*kP,rspeed);
+    delay(5); // delay of 5ms (subject to change)
+  }
+  
+  // when we're done turn the motors off
+  prizm.setMotorSpeeds(0,0);
+}
+
+// force a value to be with in a range of [-1.0,1.0]
+float normalise(float value)
+{
+  if(value < -100)
+    return -100;
+  else if(value > 100)
+    return 100;
+  else
+    return value;
+}
+
 
 float getRotation()
 {
