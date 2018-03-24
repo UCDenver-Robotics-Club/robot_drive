@@ -1,5 +1,5 @@
 #include <vectormath.h> // libs for vector math
-#include <PID_v1.h> // pid control 
+//#include <PID_v1.h> // pid control 
 #include <PRIZM.h> // for motor and servo drive 
 #include <i2cdevice.h> // lib for devices 
 // imu devices 
@@ -8,7 +8,7 @@
 #include <utility/imumaths.h>
 // constents 
 const int STARTINTSPEED = 40; // worked pretty well @ 40
-const float kP = 8; // this is found by trial and error 
+const float kP = 0.055; // this is found by trial and error 
 
 // objects for running the system
 PRIZM prizm; // prizm object 
@@ -55,39 +55,69 @@ void loop()
   //delay(1000);
   //blinker.off();
   //delay(1000);  
+  
 }
 
-void drive(double correction,double rspeed)
+void drive(double rspeed)
 {
-  // correction for left motor
-  double tempLeft = rspeed;
-  // apply the correction and then normalise it.
-  tempLeft += correction;
-  tempLeft = normalise(tempLeft);
-  //prizm.setMotorPower(2,tempLeft); // set the speed of the left motor, I think
+//  // correction for left motor
+//  double tempLeft = rspeed;
+//  // apply the correction and then normalise it.
+//  tempLeft += correction;
+//  tempLeft = normalise(tempLeft);
+//  //prizm.setMotorPower(2,tempLeft); // set the speed of the left motor, I think
+//
+//  // correction for right motor
+//  double tempRight = correction;
+//  tempRight += rspeed;// * -1.0; 
+//  tempRight = normalise(tempRight); // normalise with in bounds
+//  //prizm.setMotorPower(1,tempRight); // set the motor speed
+ 
+//  
+//  prizm.setMotorPowers(tempLeft,tempRight);
+//  
+//  // send the motor values back to the PC
+//  Serial.print(" right motor: ");
+//  Serial.print(tempRight);
+//  Serial.print(" left motor: ");
+//  Serial.print(tempLeft);
+//  Serial.print(" right encoder: ");
+//  Serial.print(prizm.readEncoderCount(2));
+//  Serial.print(" left encoder: ");
+//  Serial.print(prizm.readEncoderCount(1));
+//  Serial.print(" current angle: ");
+//  Serial.print(getRotation());
+//  Serial.print(" correcting value: ");
+//  Serial.print(correction);
+//  Serial.println();
 
-  // correction for right motor
-  double tempRight = correction;
-  tempRight += rspeed;// * -1.0; 
-  tempRight = normalise(tempRight); // normalise with in bounds
-  //prizm.setMotorPower(1,tempRight); // set the motor speed
-  
-  prizm.setMotorPowers(tempLeft,tempRight);
-  
-  // send the motor values back to the PC
+   // left motor: 1  right motor: 2
+  float angle = getRotation();
+  double correction = kP*angle;   
+
+
+  if(angle > 180) // skewing to the left
+  {
+    motorPower.setX(motorPower.getX() + correction);
+    motorPower.setY(motorPower.getY() - correction);
+  }
+  else // skewing to the right
+  {
+    motorPower.setX(motorPower.getX() - correction);
+    motorPower.setY(motorPower.getY() + correction);
+  }
+
+   motorPower.setValues(normalise(motorPower.getX()),normalise(motorPower.getY())); // make sure the values are with in the correct range
+
   Serial.print(" right motor: ");
-  Serial.print(tempRight);
+  Serial.print(motorPower.getY());
   Serial.print(" left motor: ");
-  Serial.print(tempLeft);
-  Serial.print(" right encoder: ");
-  Serial.print(prizm.readEncoderCount(2));
-  Serial.print(" left encoder: ");
-  Serial.print(prizm.readEncoderCount(1));
-  Serial.print(" current angle: ");
-  Serial.print(getRotation());
-  Serial.print(" correcting value: ");
+  Serial.print(motorPower.getX());
+  Serial.print(" correction: ");
   Serial.print(correction);
   Serial.println();
+
+  prizm.setMotorPowers(motorPower.getX(),motorPower.getY()); // update the motors with the new values
 }
 
 // drive a fixed distance, use feet if nessary
@@ -116,14 +146,16 @@ void driveDistance(float distance,float rspeed,bool usefeet)
   }
 
   Serial.println(ticksToTravel);
-
+  // set inital values for the motor power manager 
+  
+  motorPower.setValues(STARTINTSPEED,STARTINTSPEED);
   while(abs(prizm.readEncoderCount(1)) < ticksToTravel && abs(prizm.readEncoderCount(2)) < ticksToTravel)
   {
     // use proportinal feedback from the IMU to make sure that we're driving in a strait line
     float angle = getRotation();
     
-    drive(angle*kP,rspeed);
-    delay(5); // delay of 5ms (subject to change)
+    drive(rspeed);
+    delay(1); // delay of 5ms (subject to change)  now 1ms
   }
   
   // when we're done turn the motors off
